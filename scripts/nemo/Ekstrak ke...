@@ -1,0 +1,18 @@
+#!/bin/bash
+# Ekstrak ke... (Nautilus / Nemo)
+export PATH="$HOME/.local/bin:$PATH"
+
+files=()
+if [ -n "$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS" ]; then
+    while IFS= read -r line; do
+        [ -n "$line" ] && files+=("$line")
+    done <<< "$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS"
+elif [ -n "$NEMO_SCRIPT_SELECTED_FILE_PATHS" ]; then
+    while IFS= read -r line; do
+        [ -n "$line" ] && files+=("$line")
+    done <<< "$NEMO_SCRIPT_SELECTED_FILE_PATHS"
+else
+    files=("$@")
+fi
+
+quick-extract --dialog "${files[@]}"

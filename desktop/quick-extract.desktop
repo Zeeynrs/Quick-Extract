@@ -1,0 +1,32 @@
+[Desktop Entry]
+Name=Quick Extract
+Name[id]=Ekstrak Cepat
+GenericName=Archive Extractor
+GenericName[id]=Ekstraktor Arsip
+Comment=Extract archive files easily
+Comment[id]=Ekstrak berbagai jenis file arsip dengan mudah
+Exec=quick-extract --dialog %F
+Icon=archive-extract
+Terminal=false
+Type=Application
+Categories=Utility;Archiving;Compression;
+MimeType=application/zip;application/x-zip-compressed;application/x-tar;application/x-compressed-tar;application/x-gzip;application/gzip;application/x-bzip;application/x-bzip2;application/x-bzip-compressed-tar;application/x-bzip2-compressed-tar;application/x-xz;application/x-xz-compressed-tar;application/x-zstd;application/x-zstd-compressed-tar;application/x-lzma;application/x-lzma-compressed-tar;application/x-7z-compressed;application/vnd.rar;application/x-rar;application/x-rar-compressed;application/x-iso9660-image;application/x-cpio;application/x-deb;application/vnd.debian.binary-package;application/x-rpm;application/vnd.comicbook+zip;application/vnd.comicbook-rar;application/x-archive;
+Actions=ExtractHere;ExtractToSubfolder;ExtractTo;
+
+[Desktop Action ExtractHere]
+Name=Extract Here
+Name[id]=Ekstrak di Sini
+Icon=archive-extract
+Exec=quick-extract --here %F
+
+[Desktop Action ExtractToSubfolder]
+Name=Extract to Subfolder
+Name[id]=Ekstrak ke Subfolder
+Icon=archive-extract
+Exec=quick-extract --subfolder %F
+
+[Desktop Action ExtractTo]
+Name=Extract to...
+Name[id]=Ekstrak ke...
+Icon=document-open-folder
+Exec=quick-extract --dialog %F

@@ -1,0 +1,427 @@
+#!/usr/bin/env python3
+"""
+Quick Extract - Ekstraktor file arsip terintegrasi File Manager (Dolphin, Nautilus, Nemo, Thunar).
+Mendukung: .zip, .tar, .tar.gz, .tgz, .tar.bz2, .tar.xz, .tar.zst, .7z, .rar, .gz, .bz2, .xz, .iso, dll.
+"""
+
+import sys
+import os
+import shutil
+import subprocess
+import argparse
+import urllib.parse
+from pathlib import Path
+
+VERSION = "1.0.0"
+
+COMPOUND_EXTENSIONS = (
+    ".tar.gz",
+    ".tar.bz2",
+    ".tar.xz",
+    ".tar.zst",
+    ".tar.lz4",
+    ".tar.lzma",
+    ".tar.z",
+    ".tar.lz",
+    ".tgz",
+    ".tbz",
+    ".tbz2",
+    ".txz",
+    ".tzst",
+)
+
+SINGLE_COMPRESSED_EXTENSIONS = (
+    ".gz",
+    ".bz2",
+    ".xz",
+    ".zst",
+    ".lzma",
+)
+
+
+def send_notification(title: str, message: str, icon: str = "archive-extract", urgency: str = "normal"):
+    """Mengirim notifikasi desktop via notify-send jika tersedia."""
+    if shutil.which("notify-send"):
+        try:
+            subprocess.run(
+                ["notify-send", "-a", "Quick Extract", "-i", icon, "-u", urgency, title, message],
+                timeout=5,
+                check=False,
+            )
+        except Exception:
+            pass
+
+
+def normalize_file_input(raw: str) -> str:
+    """Mengubah URI file:// atau relative path menjadi absolute filesystem path."""
+    raw = raw.strip()
+    if raw.startswith("file://"):
+        parsed = urllib.parse.urlparse(raw)
+        path = urllib.parse.unquote(parsed.path)
+    else:
+        path = os.path.expanduser(raw)
+    return os.path.abspath(path)
+
+
+def get_archive_base_name(filepath: str) -> str:
+    """Mendapatkan nama subfolder tanpa ekstensi arsip (mendukung .tar.gz dsb)."""
+    filename = os.path.basename(filepath)
+    lower = filename.lower()
+    for ext in COMPOUND_EXTENSIONS:
+        if lower.endswith(ext):
+            return filename[:-len(ext)]
+    stem, _ = os.path.splitext(filename)
+    return stem
+
+
+def is_single_compressed(filepath: str) -> bool:
+    """Cek apakah file hanya file tunggal yang dikompresi (bukan tarball)."""
+    lower = filepath.lower()
+    for compound in COMPOUND_EXTENSIONS:
+        if lower.endswith(compound):
+            return False
+    for single in SINGLE_COMPRESSED_EXTENSIONS:
+        if lower.endswith(single):
+            return True
+    return False
+
+
+def ask_target_directory(initial_dir: str = "") -> str | None:
+    """Membuka dialog GUI (kdialog atau zenity) untuk memilih direktori tujuan ekstrak."""
+    if not initial_dir or not os.path.isdir(initial_dir):
+        initial_dir = os.path.expanduser("~")
+
+    # 1. Coba kdialog (native KDE/Qt)
+    if shutil.which("kdialog"):
+        try:
+            proc = subprocess.run(
+                ["kdialog", "--getexistingdirectory", initial_dir, "Pilih Folder Tujuan Ekstrak"],
+                capture_output=True,
+                text=True,
+            )
+            if proc.returncode == 0:
+                selected = proc.stdout.strip()
+                if selected:
+                    return normalize_file_input(selected)
+            return None
+        except Exception:
+            pass
+
+    # 2. Coba zenity (GTK)
+    if shutil.which("zenity"):
+        try:
+            proc = subprocess.run(
+                [
+                    "zenity",
+                    "--file-selection",
+                    "--directory",
+                    "--title=Pilih Folder Tujuan Ekstrak",
+                    f"--filename={initial_dir}/",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if proc.returncode == 0:
+                selected = proc.stdout.strip()
+                if selected:
+                    return normalize_file_input(selected)
+            return None
+        except Exception:
+            pass
+
+    return None
+
+
+def extract_single_compressed_file(filepath: str, target_dir: str) -> tuple[bool, str]:
+    """Mengekstrak file kompresi tunggal seperti file.gz, file.bz2, file.xz."""
+    os.makedirs(target_dir, exist_ok=True)
+    basename = os.path.basename(filepath)
+    out_name, ext = os.path.splitext(basename)
+    out_path = os.path.join(target_dir, out_name)
+    ext_lower = ext.lower()
+
+    try:
+        if ext_lower == ".gz":
+            import gzip
+            with gzip.open(filepath, "rb") as f_in, open(out_path, "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            return True, f"Berhasil didekompresi ke {out_path}"
+
+        elif ext_lower == ".bz2":
+            import bz2
+            with bz2.open(filepath, "rb") as f_in, open(out_path, "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            return True, f"Berhasil didekompresi ke {out_path}"
+
+        elif ext_lower in (".xz", ".lzma"):
+            import lzma
+            with lzma.open(filepath, "rb") as f_in, open(out_path, "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            return True, f"Berhasil didekompresi ke {out_path}"
+
+        elif ext_lower == ".zst":
+            if shutil.which("zstd"):
+                cmd = ["zstd", "-d", "-f", filepath, "-o", out_path]
+                res = subprocess.run(cmd, capture_output=True, text=True)
+                if res.returncode == 0:
+                    return True, f"Berhasil didekompresi ke {out_path}"
+                return False, res.stderr.strip() or "Decompress zstd gagal"
+            else:
+                return False, "Perintah 'zstd' tidak ditemukan untuk dekompresi .zst"
+
+        return False, f"Format kompresi tidak didukung: {ext}"
+    except Exception as e:
+        return False, str(e)
+
+
+def extract_with_python_fallback(filepath: str, target_dir: str) -> tuple[bool, str]:
+    """Fallback menggunakan pustaka standar Python (zipfile, tarfile)."""
+    lower = filepath.lower()
+
+    # Fallback ZIP / CBZ / JAR / APK
+    if lower.endswith((".zip", ".cbz", ".jar", ".apk")):
+        try:
+            import zipfile
+            with zipfile.ZipFile(filepath, "r") as zf:
+                # Proteksi Zip Slip (path traversal)
+                abs_target = os.path.abspath(target_dir)
+                for member in zf.infolist():
+                    member_path = os.path.abspath(os.path.join(abs_target, member.filename))
+                    if not (member_path == abs_target or member_path.startswith(abs_target + os.sep)):
+                        return False, f"Bahaya keamanan: path traversal terdeteksi ({member.filename})"
+                zf.extractall(target_dir)
+            return True, "Ekstrak zip via python berhasil"
+        except Exception as e:
+            return False, f"Python zip error: {e}"
+
+    # Fallback TAR (semua jenis kompresi)
+    if any(lower.endswith(ext) for ext in (".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tbz2", ".tar.xz", ".txz")):
+        try:
+            import tarfile
+            with tarfile.open(filepath, "r:*") as tf:
+                try:
+                    tf.extractall(target_dir, filter="data")
+                except TypeError:
+                    tf.extractall(target_dir)
+            return True, "Ekstrak tar via python berhasil"
+        except Exception as e:
+            return False, f"Python tar error: {e}"
+
+    # Fallback 7z
+    if lower.endswith(".7z"):
+        for tool in ("7z", "7za"):
+            if shutil.which(tool):
+                cmd = [tool, "x", "-y", f"-o{target_dir}", filepath]
+                proc = subprocess.run(cmd, capture_output=True, text=True)
+                if proc.returncode == 0:
+                    return True, f"Ekstrak via {tool} berhasil"
+                return False, proc.stderr.strip() or f"{tool} error"
+
+    # Fallback RAR / CBR
+    if lower.endswith((".rar", ".cbr")):
+        if shutil.which("unrar"):
+            cmd = ["unrar", "x", "-o+", filepath, f"{target_dir}/"]
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            if proc.returncode == 0:
+                return True, "Ekstrak via unrar berhasil"
+        if shutil.which("7z"):
+            cmd = ["7z", "x", "-y", f"-o{target_dir}", filepath]
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            if proc.returncode == 0:
+                return True, "Ekstrak via 7z berhasil"
+        if shutil.which("unar"):
+            cmd = ["unar", "-o", target_dir, filepath]
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            if proc.returncode == 0:
+                return True, "Ekstrak via unar berhasil"
+
+    return False, "Tidak ada tool yang cocok untuk mengekstrak arsip ini"
+
+
+def extract_archive(filepath: str, target_dir: str) -> tuple[bool, str]:
+    """
+    Mengekstrak file arsip ke target_dir.
+    1. Cek apakah single compressed file (.gz, .bz2, dsb non-tar).
+    2. Coba bsdtar (sangat cepat, aman, mendukung zip, tar, 7z, rar, iso, dsb).
+    3. Jika bsdtar gagal/tidak ada, gunakan fallback python / 7z / unrar.
+    """
+    if not os.path.isfile(filepath):
+        return False, f"File tidak ditemukan: {filepath}"
+
+    os.makedirs(target_dir, exist_ok=True)
+
+    # 1. Cek single compressed file non-tar
+    if is_single_compressed(filepath):
+        return extract_single_compressed_file(filepath, target_dir)
+
+    # 2. Coba bsdtar jika tersedia
+    if shutil.which("bsdtar"):
+        try:
+            cmd = ["bsdtar", "-xf", filepath, "-C", target_dir]
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            if proc.returncode == 0:
+                return True, "Ekstrak via bsdtar berhasil"
+        except Exception:
+            pass
+
+    # 3. Fallback
+    success, msg = extract_with_python_fallback(filepath, target_dir)
+    if success:
+        return True, msg
+
+    return False, f"Gagal mengekstrak '{os.path.basename(filepath)}'. Format mungkin memerlukan tool tambahan (seperti 7zip atau unrar)."
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Quick Extract: Tool ekstraksi arsip dengan integrasi menu klik-kanan File Manager."
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "-H",
+        "--here",
+        action="store_true",
+        help="Ekstrak file di direktori yang sama dengan arsip (Extract Here)",
+    )
+    group.add_argument(
+        "-s",
+        "--subfolder",
+        action="store_true",
+        help="Ekstrak file ke subfolder bernama arsip (Extract to Subfolder)",
+    )
+    group.add_argument(
+        "-d",
+        "--dialog",
+        action="store_true",
+        help="Buka dialog GUI untuk memilih folder tujuan ekstrak (Extract to...)",
+    )
+    group.add_argument(
+        "-t",
+        "--to",
+        metavar="DIR",
+        type=str,
+        help="Ekstrak file ke direktori tujuan yang ditentukan",
+    )
+    parser.add_argument(
+        "--no-notify",
+        action="store_true",
+        help="Matikan notifikasi desktop",
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {VERSION}",
+    )
+    parser.add_argument(
+        "files",
+        nargs="*",
+        help="Path file atau URL file:// arsip yang akan diekstrak",
+    )
+
+    args = parser.parse_args()
+
+    # Normalisasi list file
+    files = [normalize_file_input(f) for f in args.files if f.strip()]
+
+    # Jika tidak ada file yang diberikan, tapi mode dialog aktif
+    if not files:
+        if args.dialog:
+            # Pengguna menjalankan tanpa file, buka file dialog jika perlu
+            print("Peringatan: Tidak ada file arsip yang dipilih.", file=sys.stderr)
+            sys.exit(1)
+        parser.print_help()
+        sys.exit(0)
+
+    # Tentukan mode ekstraksi default: jika tidak ada opsi, default adalah --subfolder
+    mode = "subfolder"
+    if args.here:
+        mode = "here"
+    elif args.subfolder:
+        mode = "subfolder"
+    elif args.dialog:
+        mode = "dialog"
+    elif args.to:
+        mode = "to"
+
+    # Jika mode dialog, minta pengguna memilih folder
+    chosen_target = None
+    if mode == "dialog":
+        initial_dir = os.path.dirname(files[0]) if files else os.path.expanduser("~")
+        chosen_target = ask_target_directory(initial_dir)
+        if not chosen_target:
+            # Pengguna membatalkan dialog
+            sys.exit(0)
+    elif mode == "to":
+        chosen_target = os.path.abspath(os.path.expanduser(args.to))
+
+    success_count = 0
+    failure_details = []
+
+    for filepath in files:
+        if not os.path.exists(filepath):
+            failure_details.append(f"{os.path.basename(filepath)}: File tidak ditemukan")
+            continue
+
+        parent_dir = os.path.dirname(filepath)
+        base_name = get_archive_base_name(filepath)
+
+        if mode == "here":
+            target_dir = parent_dir
+        elif mode == "subfolder":
+            target_dir = os.path.join(parent_dir, base_name)
+        elif mode in ("dialog", "to"):
+            target_dir = chosen_target
+        else:
+            target_dir = os.path.join(parent_dir, base_name)
+
+        success, message = extract_archive(filepath, target_dir)
+        if success:
+            success_count += 1
+        else:
+            failure_details.append(f"{os.path.basename(filepath)}: {message}")
+
+    # Notifikasi hasil
+    if not args.no_notify:
+        if len(files) == 1:
+            name = os.path.basename(files[0])
+            if success_count == 1:
+                dest_display = os.path.basename(target_dir) or target_dir
+                send_notification(
+                    "Ekstrak Berhasil",
+                    f"Arsip '{name}' selesai diekstrak ke:\n{target_dir}",
+                    icon="archive-extract",
+                )
+            else:
+                err_msg = failure_details[0] if failure_details else "Gagal mengekstrak arsip."
+                send_notification(
+                    "Ekstrak Gagal",
+                    err_msg,
+                    icon="dialog-error",
+                    urgency="critical",
+                )
+        else:
+            if failure_details:
+                send_notification(
+                    "Ekstrak Selesai Sebagian",
+                    f"{success_count}/{len(files)} arsip berhasil diekstrak.\nAda {len(failure_details)} error.",
+                    icon="dialog-warning",
+                    urgency="critical",
+                )
+            else:
+                send_notification(
+                    "Ekstrak Berhasil",
+                    f"Semua ({success_count}) arsip berhasil diekstrak.",
+                    icon="archive-extract",
+                )
+
+    if failure_details:
+        for err in failure_details:
+            print(f"[ERROR] {err}", file=sys.stderr)
+        sys.exit(1)
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
