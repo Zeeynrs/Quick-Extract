@@ -1,100 +1,108 @@
 # Quick Extract
 
-**Quick Extract** adalah package ekstraktor file arsip ringan dan cepat untuk Linux dengan integrasi menu klik-kanan pada file manager (KDE Dolphin, GNOME Nautilus, Cinnamon Nemo, Thunar, dsb).
+A fast, lightweight archive extraction utility for Linux with native right-click context menu integration for popular file managers including **KDE Dolphin**, **GNOME Nautilus**, **Cinnamon Nemo**, and **Thunar**.
 
-Mirip dengan utility ekstrak bawaan (seperti Ark, File Roller, atau 7-Zip context menu), Quick Extract memudahkan Anda mengekstrak arsip langsung dari klik kanan tanpa perlu membuka terminal atau aplikasi berat.
-
----
-
-## ✨ Fitur Utama
-
-- **Integrasi Menu Klik-Kanan (Context Menu)**:
-  - 📂 **Ekstrak di Sini (Extract Here)**: Mengekstrak isi arsip langsung di direktori yang sama.
-  - 📁 **Ekstrak ke Subfolder (Extract to Subfolder)**: Otomatis membuat subfolder dengan nama arsip (misal `project.tar.gz` diekstrak ke folder `project/`).
-  - 🗂️ **Ekstrak ke... (Extract to...)**: Membuka dialog pemilih folder (`kdialog` untuk KDE / `zenity` untuk GTK) untuk menentukan folder tujuan secara leluasa.
-- **Dukungan Format Luas**:
-  - `.zip`, `.cbz`, `.jar`, `.apk`
-  - `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz`, `.tbz2`, `.tar.xz`, `.txz`, `.tar.zst`
-  - `.7z`, `.rar`, `.cbr`
-  - `.iso`, `.cpio`, `.deb`, `.rpm`
-  - Kompresi tunggal: `.gz`, `.bz2`, `.xz`, `.zst`, `.lzma`
-- **Engine Cepat & Aman**:
-  - Menggunakan `bsdtar` (`libarchive`) sebagai engine utama yang sangat cepat dan hemat resource.
-  - Proteksi otomatis terhadap serangan Zip Slip / path traversal.
-  - Dilengkapi notifikasi desktop (`notify-send`) yang ramah dan responsif.
-- **Multi-File Support**:
-  - Pilih beberapa arsip sekaligus di Dolphin/Nautilus, klik kanan -> ekstrak semuanya dalam satu klik.
+Similar to built-in archive extraction utilities (such as Ark, File Roller, or 7-Zip context menus), Quick Extract lets you decompress archives directly from your file manager's context menu without opening terminal windows or bulky GUI applications.
 
 ---
 
-## 🚀 Cara Instalasi
+## ✨ Features
 
-### 1. Instalasi Otomatis (Rekomendasi - Tanpa Root / Sudo)
+- **Context Menu Integration**:
+  - 📂 **Extract Here**: Extracts archive contents into the current directory.
+  - 📁 **Extract to Subfolder**: Automatically creates and extracts into a dedicated folder named after the archive (e.g. `project.tar.gz` extracts into `project/`).
+  - 🗂️ **Extract to...**: Opens a native folder picker dialog (`kdialog` for KDE / `zenity` for GTK) to choose any destination directory.
+- **Wide Format Support**:
+  - Archive containers: `.zip`, `.cbz`, `.jar`, `.apk`
+  - Tarballs: `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz`, `.tbz2`, `.tar.xz`, `.txz`, `.tar.zst`
+  - Other formats: `.7z`, `.rar`, `.cbr`, `.iso`, `.cpio`, `.deb`, `.rpm`
+  - Single-file compression: `.gz`, `.bz2`, `.xz`, `.zst`, `.lzma`
+- **Fast & Secure Engine**:
+  - Powered by `bsdtar` (`libarchive`) for high-performance, non-blocking extraction.
+  - Pure Python fallback for zip and tar archives when external tools are unavailable.
+  - Built-in Zip Slip / path traversal protection.
+  - Desktop notifications via `notify-send`.
+- **Multi-File Batch Extraction**:
+  - Select multiple archives at once in your file manager and extract all of them simultaneously.
 
-Jalankan script installer:
+---
+
+## 🚀 Installation
+
+### 1. User-level Installation (Recommended - No root/sudo required)
+
+Clone the repository and run the installer script:
 
 ```bash
-cd ~/Projects/quick-extract
+git clone https://github.com/Zeeynrs/Quick-Extract.git
+cd Quick-Extract
 ./install.sh
 ```
 
-Installer akan otomatis:
-1. Menyalin binary ke `~/.local/bin/quick-extract`.
-2. Mendaftarkan ServiceMenu KDE Dolphin di `~/.local/share/kio/servicemenus/`.
-3. Mendaftarkan Desktop Action di `~/.local/share/applications/`.
-4. Mendaftarkan skrip untuk GNOME Nautilus & Nemo di `~/.local/share/nautilus/scripts/`.
-5. Memperbarui cache database desktop.
+The script automatically:
+1. Copies the executable to `~/.local/bin/quick-extract`.
+2. Registers KDE Dolphin ServiceMenus in `~/.local/share/kio/servicemenus/`.
+3. Registers standard desktop entries in `~/.local/share/applications/`.
+4. Registers Nautilus & Nemo scripts in `~/.local/share/nautilus/scripts/`.
+5. Updates desktop and MIME caches.
 
-> **Catatan**: Jika Dolphin sedang terbuka, tutup jendela Dolphin lalu buka kembali agar menu konteks klik-kanan langsung muncul.
+> **Tip**: If Dolphin or your file manager is currently open, close and reopen it to reload the new context menus.
 
-### 2. Instalasi via Arch Linux Package (`makepkg`)
+### 2. Arch Linux Package (`makepkg`)
 
-Jika Anda ingin menginstalnya secara global sebagai paket pacman:
+To install system-wide via pacman:
 
 ```bash
-cd ~/Projects/quick-extract
+cd Quick-Extract
 makepkg -si
 ```
 
 ---
 
-## 🗑️ Cara Uninstall
+## 🗑️ Uninstallation
 
-Cukup jalankan script uninstaller:
+To remove Quick Extract and its desktop integrations, run:
 
 ```bash
-cd ~/Projects/quick-extract
+cd Quick-Extract
 ./uninstall.sh
 ```
 
 ---
 
-## 💻 Penggunaan via Terminal (Opsional)
+## 💻 CLI Usage (Optional)
 
-Selain dari klik-kanan file manager, `quick-extract` juga bisa dipanggil via terminal:
+In addition to file manager context menus, `quick-extract` can also be used directly from your shell:
 
 ```bash
-# Ekstrak di direktori saat ini
-quick-extract --here berkas.zip
+# Extract into current directory
+quick-extract --here archive.zip
 
-# Ekstrak ke subfolder otomatis
-quick-extract --subfolder proyek.tar.gz
+# Extract into a subfolder
+quick-extract --subfolder project.tar.gz
 
-# Pilih folder tujuan via dialog GUI
-quick-extract --dialog data.7z
+# Open a GUI directory picker
+quick-extract --dialog backup.7z
 
-# Ekstrak ke folder tertentu
-quick-extract --to /home/user/Tujuan berkas.rar
+# Extract to a specified path
+quick-extract --to /path/to/destination files.rar
 ```
 
 ---
 
-## 📦 Ketergantungan (Dependencies)
+## 📦 Dependencies
 
-- `python` (>= 3.8)
-- `libarchive` (menyediakan `bsdtar`, sudah terinstal di Arch Linux)
-- `libnotify` (`notify-send`, untuk notifikasi desktop)
-- *Opsional*:
-  - `kdialog` (untuk pemilih folder Qt di KDE Dolphin)
-  - `zenity` (untuk pemilih folder GTK di Nautilus / GNOME)
-  - `7zip` / `unrar` (untuk arsip 7z/RAR proprietary jika diperlukan)
+- **Python** (>= 3.8)
+- **libarchive** (provides `bsdtar`, pre-installed on most Linux distributions)
+- **libnotify** (`notify-send`, for desktop notifications)
+
+### Optional Dependencies
+- `kdialog`: Native Qt folder picker dialog in KDE Dolphin.
+- `zenity`: Native GTK folder picker dialog in GNOME / XFCE.
+- `7zip` / `unrar`: For proprietary RAR or specialized 7z archives.
+
+---
+
+## 📄 License
+
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
